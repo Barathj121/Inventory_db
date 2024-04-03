@@ -5,10 +5,20 @@ from pydantic import BaseModel
 from fastapi import HTTPException
 from datetime import datetime
 import asyncpg
+from fastapi.middleware.cors import CORSMiddleware
+
 
 DATABASE_URL = "dbname=inventory_wxrq user=inventory_wxrq_user password=32T4vxi3Pe4E703IDoJFRLjLDPnVjaQ6 host=dpg-co2n9f021fec73b0s4g0-a.oregon-postgres.render.com port=5432"
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
 
 class Product(BaseModel):
     ProductID: int
