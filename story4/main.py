@@ -126,12 +126,16 @@ async def get_recent_products():
     conn = psycopg2.connect(DATABASE_URL)
     try:
         with conn.cursor() as cur:
-            # Step 1: Retrieve the latest record for each product from the inventory_product_history table
+            # Step 1: Retrieve the record with the highest ID for each product from the inventory_product_history table
             cur.execute(
                 """
-                SELECT DISTINCT ON ("product_id") "product_id", "total_quantity", "inventory_id", "location"
-                FROM "inventory_product_history"
-                ORDER BY "product_id", "datetime" DESC
+                SELECT iph."product_id", iph."total_quantity", iph."inventory_id", iph."location"
+                FROM "inventory_product_history" iph
+                INNER JOIN (
+                    SELECT "product_id", MAX("id") as max_id
+                    FROM "inventory_product_history"
+                    GROUP BY "product_id"
+                ) iph_max ON iph."product_id" = iph_max."product_id" AND iph."id" = iph_max.max_id
                 """
             )
             rows = cur.fetchall()
@@ -154,7 +158,7 @@ async def get_recent_products():
 
     return [{"product_id": row[0], "quantity": row[1], "inventory_id": row[2], "location": row[3], "product_name": product_names.get(row[0], "")} for row in rows]
 
-
+    
 class History(BaseModel):
     product_id: Optional[int] = None
 
