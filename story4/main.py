@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 import psycopg2
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import HTTPException
 from datetime import datetime
@@ -67,6 +67,8 @@ async def get_inventories():
 
 
 
+from typing import List
+
 class InventoryProduct(BaseModel):
     inventory_id: int
     product_id: int
@@ -75,37 +77,38 @@ class InventoryProduct(BaseModel):
     location: str
 
 @app.post("/inventory_product")
-async def update_inventory_product(inventory_product: InventoryProduct):
+async def update_inventory_product(inventory_products: List[InventoryProduct]):
     conn = psycopg2.connect(DATABASE_URL)
     try:
         with conn.cursor() as cur:
-            # Check if the product_id and inventory_id exist in the inventory_product table
-            cur.execute(
-                """SELECT * FROM "inventory_product" WHERE "product_id" = %s AND "InventoryID" = %s""",
-                (inventory_product.product_id, inventory_product.inventory_id)
-            )
-            row = cur.fetchone()
-            total_quantity = inventory_product.import_ - inventory_product.export
-            if row:
-                # If the record exists, update the quantity
+            for inventory_product in inventory_products:
+                # Check if the product_id and inventory_id exist in the inventory_product table
                 cur.execute(
-                    """UPDATE "inventory_product" SET quantity = quantity + %s WHERE "product_id" = %s AND "InventoryID" = %s RETURNING quantity""",
-                    (total_quantity, inventory_product.product_id, inventory_product.inventory_id)
+                    """SELECT * FROM "inventory_product" WHERE "product_id" = %s AND "InventoryID" = %s""",
+                    (inventory_product.product_id, inventory_product.inventory_id)
                 )
-                total_quantity = cur.fetchone()[0]
-            else:
-                # If the record does not exist, insert a new record
+                row = cur.fetchone()
+                total_quantity = inventory_product.import_ - inventory_product.export
+                if row:
+                    # If the record exists, update the quantity
+                    cur.execute(
+                        """UPDATE "inventory_product" SET quantity = quantity + %s WHERE "product_id" = %s AND "InventoryID" = %s RETURNING quantity""",
+                        (total_quantity, inventory_product.product_id, inventory_product.inventory_id)
+                    )
+                    total_quantity = cur.fetchone()[0]
+                else:
+                    # If the record does not exist, insert a new record
+                    cur.execute(
+                        """INSERT INTO "inventory_product" ("product_id", "InventoryID", "quantity", "location") VALUES (%s, %s, %s, %s) RETURNING quantity""",
+                        (inventory_product.product_id, inventory_product.inventory_id, total_quantity, inventory_product.location)
+                    )
+                    total_quantity = cur.fetchone()[0]
+                # Insert a new record into inventory_product_history
                 cur.execute(
-                    """INSERT INTO "inventory_product" ("product_id", "InventoryID", "quantity", "location") VALUES (%s, %s, %s, %s) RETURNING quantity""",
-                    (inventory_product.product_id, inventory_product.inventory_id, total_quantity, inventory_product.location)
+                    """INSERT INTO "inventory_product_history" ("product_id", "inventory_id", "datetime", "import", "export", "total_quantity", "location") VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    (inventory_product.product_id, inventory_product.inventory_id, datetime.now(), inventory_product.import_, inventory_product.export, total_quantity, inventory_product.location)
                 )
-                total_quantity = cur.fetchone()[0]
-            # Insert a new record into inventory_product_history
-            cur.execute(
-                """INSERT INTO "inventory_product_history" ("product_id", "inventory_id", "datetime", "import", "export", "total_quantity", "location") VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (inventory_product.product_id, inventory_product.inventory_id, datetime.now(), inventory_product.import_, inventory_product.export, total_quantity, inventory_product.location)
-            )
-        conn.commit()
+            conn.commit()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:
@@ -113,6 +116,7 @@ async def update_inventory_product(inventory_product: InventoryProduct):
 
     return {"message": "Inventory updated successfully"}
 
+    
 @app.get("/recent_products")
 async def get_recent_products():
     conn = psycopg2.connect(DATABASE_URL)
@@ -145,3 +149,41 @@ async def get_recent_products():
         conn.close()
 
     return [{"product_id": row[0], "quantity": row[1], "inventory_id": row[2], "location": row[3], "product_name": product_names.get(row[0], "")} for row in rows]
+
+
+class History(BaseModel):
+    product_id: Optional[int] = None
+
+@app.post("/view_history")
+async def view_history(history: History):
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        with conn.cursor() as cur:
+            if history.product_id:
+                # If product_id is provided, retrieve its history
+                cur.execute(
+                    """SELECT * FROM "inventory_product_history" WHERE "product_id" = %s""",
+                    (history.product_id,)
+                )
+            else:
+                # If product_id is not provided, retrieve all history
+                cur.execute("""SELECT * FROM "inventory_product_history" """)
+            
+            rows = cur.fetchall()
+            # Convert rows to JSON with column names
+            result = [
+                {
+                    "product_id": row[0],
+                    "inventory_id": row[1],
+                    "datetime": row[2],
+                    "import": row[3],
+                    "export": row[4],
+                    "location": row[5],
+                    "id": row[6],
+                    "total_quantity": row[7]
+                }
+                for row in rows
+            ]
+            return result
+    finally:
+        conn.close()
