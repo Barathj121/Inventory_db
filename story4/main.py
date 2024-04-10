@@ -1,13 +1,24 @@
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException,BackgroundTasks
 import psycopg2
 from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import HTTPException
-from datetime import datetime
+from datetime import datetime,timedelta
 import asyncpg
 from fastapi.middleware.cors import CORSMiddleware
 from passlib.hash import bcrypt  # For password hashing
+from fastapi import FastAPI, HTTPException,BackgroundTasks
+from pydantic import BaseModel
+import string
+import random
+from email.mime.text import MIMEText
+import os
+from twilio.rest import Client
+from typing import List
+from dotenv import load_dotenv
+import smtplib
+load_dotenv('.env')
 
 logger = logging.getLogger("uvicorn")
 
